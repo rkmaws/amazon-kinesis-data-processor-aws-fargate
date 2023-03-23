@@ -12,4 +12,19 @@ RUN mvn -f /home/app/pom.xml clean package
 FROM public.ecr.aws/amazoncorretto/amazoncorretto:11
 COPY --from=build /home/app/target/producer-0.0.1-SNAPSHOT.jar /usr/local/lib/dataprocessor-producer.jar
 EXPOSE 8080
+#
+# Add env variables
+# 
+ENV REGION="us-west-2"
+ENV STREAM_NAME="data-processing-stream"
+ENV AWS_PROFILE=""
+
+#
+# Use for local testing with docker desktop
+#
+# COPY ./entrypoint.sh /
+# ENTRYPOINT ["sh","/entrypoint.sh"]
+#
+# Use for deployment
+#
 ENTRYPOINT ["java","-jar","/usr/local/lib/dataprocessor-producer.jar"]

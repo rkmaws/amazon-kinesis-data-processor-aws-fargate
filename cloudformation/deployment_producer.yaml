@@ -169,10 +169,7 @@ Resources:
     Properties:
       RepositoryName: kinesis-data-processor/producer
 
-  KinesisAutoscalerRepository01:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: kinesis-data-processor/kinesisautoscaler
+
 
 
   ECSTaskExecutionRole01:
@@ -330,114 +327,13 @@ Resources:
         TargetValue: 65
 
 
-  ECSTaskLogGroup03:
-      Type: AWS::Logs::LogGroup
-      Properties:
-        LogGroupName: ecs/kinesis-data-processor-kinesisAutoscaler
-  
-  ECSAutoScalerServiceSecurityGroup01:
-    Type: AWS::EC2::SecurityGroup
-    Properties: 
-      GroupDescription: Security Group for Kinesis Autoscaler Application Containers
-      VpcId: !Ref VPC01
-  
-  ECSTaskKinesisAutoscalerDefinition01:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: KinesisAutoscaler
-      NetworkMode: awsvpc
-      Cpu: 512
-      Memory: 1024
-      ContainerDefinitions:
-        - Cpu: 512
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/kinesis-data-processor/kinesisautoscaler'
-          Memory: 1024
-          Name: KinesisAutoscaler
-          LogConfiguration: 
-            LogDriver: awslogs
-            Options:
-              awslogs-group: ecs/kinesis-data-processor-kinesisAutoscaler
-              awslogs-region: !Ref 'AWS::Region'
-              awslogs-stream-prefix: kinesisAutoscaler
-          Environment:
-            - Name: CONFIG_FILE
-              Value: !Sub 'https://dataprocessor-source.s3-us-west-2.amazonaws.com/config/configuration-${AWS::Region}.json'
-      ExecutionRoleArn: !Ref ECSTaskExecutionRole01
-      TaskRoleArn: !Ref ECSTaskKinesisAutoscalerRole01
-      RequiresCompatibilities: 
-        - FARGATE
-    DependsOn: ECSTaskLogGroup03
 
-  ECSTaskKinesisAutoscalerRole01:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: 'sts:AssumeRole'
   
-  ECSServiceKinesisAutoscaler01:
-    Type: AWS::ECS::Service
-    Properties:
-      Cluster: !GetAtt ECSCluster01.Arn
-      DesiredCount: 1
-      LaunchType: FARGATE
-      ServiceName: dataProcessor-kinesisautoscalerservice
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups:
-            - !Ref ECSAutoScalerServiceSecurityGroup01
-          Subnets:
-            - !Ref PrivateSubnet01
-            - !Ref PrivateSubnet02
-      SchedulingStrategy: REPLICA
-      TaskDefinition: !Ref ECSTaskKinesisAutoscalerDefinition01
-  
-  ECSServiceRoleKinesisAutoscaler01:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2008-10-17
-        Statement:
-          - Sid: ''
-            Effect: Allow
-            Principal:
-              Service: ecs.amazonaws.com
-            Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole'
 
-  KinesisAutoscalerPolicy01:
-    Type: AWS::IAM::ManagedPolicy
-    Properties: 
-      ManagedPolicyName: KinesisAutoscalerPolicy
-      Roles: 
-      - !Ref ECSTaskKinesisAutoscalerRole01
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          -
-            Effect: "Allow"
-            Action: 
-            - kinesis:DescribeStreamSummary
-            - kinesis:UpdateShardCount
-            - kinesis:ListShards
-            - kinesis:SplitShard
-            - kinesis:MergeShards
-            Resource: !GetAtt KinesisDataStream01.Arn
-          - 
-            Effect: "Allow"
-            Action:
-            - cloudwatch:PutMetricData
-            Resource: !GetAtt ECSTaskLogGroup03.Arn
-          -
-            Effect: 'Allow'
-            Action:
-            - cloudwatch:GetMetricStatistics
-            Resource: '*'
+  
+
+
+
 
   ALBSecurityGroup01:
     Type: AWS::EC2::SecurityGroup
@@ -597,7 +493,7 @@ Resources:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: DataProcessor-ImageBuild-All
-      Description: Build Docker images for Producer & Kinesis Autoscaling Application
+      Description: Build Docker images for Producer Application
       ServiceRole: !Ref CodeBuildRole01
       Artifacts:
         Type: no_artifacts
@@ -611,17 +507,16 @@ Resources:
           Value: !Ref 'AWS::AccountId'
         - Name: IMAGE_REPO_NAME_PRODUCER
           Value: kinesis-data-processor/producer
-        - Name: IMAGE_REPO_NAME_AUTOSCALER
-          Value: kinesis-data-processor/kinesisautoscaler
+
         - Name: IMAGE_TAG
           Value: latest
         - Name: AWS_DEFAULT_REGION
           Value: !Ref 'AWS::Region'
         - Name: SOURCE_REPO
-          Value: https://github.com/aws-samples/amazon-kinesis-data-processor-aws-fargate
+          Value: https://github.com/rkmaws/amazon-kinesis-data-processor-aws-fargate
       Source:
         Type: NO_SOURCE
-        BuildSpec: '{"version":0.2,"env":{"git-credential-helper":"yes"},"phases":{"pre_build":{"commands":["echo Fetching repo...","git clone --single-branch --branch master $SOURCE_REPO .","echo Logging in to Amazon ECR...","$(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)"]},"build":{"commands":["echo Build started on `date`","echo Building the Docker image...","docker build -t $IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG ./producer","docker tag $IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG","docker build -t $IMAGE_REPO_NAME_AUTOSCALER:$IMAGE_TAG ./kinesisautoscaler","docker tag $IMAGE_REPO_NAME_AUTOSCALER:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_AUTOSCALER:$IMAGE_TAG"]},"post_build":{"commands":["echo Build completed on `date`","echo Pushing the Docker image...","docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG","docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_AUTOSCALER:$IMAGE_TAG"]}}}'
+        BuildSpec: '{"version": 0.2,"env": { "git-credential-helper": "yes"},"phases": { "pre_build": { "commands": [ "echo Fetching repo...", "git clone --single-branch --branch master $SOURCE_REPO .", "echo Logging in to Amazon ECR...", "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com" ] }, "build": { "commands": [ "echo Build started on `date`", "echo Building the Docker image...", "docker build -t $IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG ./producer", "docker tag $IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG" ] }, "post_build": { "commands": [ "echo Build completed on `date`", "echo Pushing the Docker image...", "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME_PRODUCER:$IMAGE_TAG" ] }}}'
       TimeoutInMinutes: 10
   
 Outputs:
